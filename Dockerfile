@@ -17,9 +17,8 @@ WORKDIR /workspace/pragmatic-platform-edge
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 # The manifests and the lock first, so the install layer is reused while they do not change.
 COPY package.json package-lock.json ./
-# Not rendered (pragmatic-platform-edge only): the repository's .npmrc stays out of the context, so its
-# `legacy-peer-deps` is repeated here; the lock carries no TODL peers of pragmatic-app-host / pragmatic-realm-adapters
-# (the edge reaches no TODL engine and no Mural). Build stages only: the runtime stage does not inherit it.
+# The repository's .npmrc stays out of the context, so its `legacy-peer-deps` is repeated here (build stages only: the
+# runtime stage does not inherit it).
 ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=true \
     npm ci --no-audit --no-fund

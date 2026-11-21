@@ -1,0 +1,14 @@
+{
+  "pragmatic-platform-edge": {
+    "entrypoint": [
+      "node",
+      "dist/bin/pragmatic-platform-edged.js"
+    ],
+    "packages": [],
+    "files": [
+      "pragmatic-platform-edge/package.json",
+      "pragmatic-platform-edge/node_modules",
+      "pragmatic-platform-edge/dist"
+    ]
+  }
+}

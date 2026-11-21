@@ -3,8 +3,8 @@ import { describe, it } from 'node:test'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PlatformEdgeComponent } from '../platform-edge-component.js'
-import { ComponentGolden } from '../../../src/component/tests/component-golden.js'
-import { ComponentSources } from '../../../src/component/tests/component-sources.js'
+import { ComponentGolden } from './component-golden.js'
+import { ComponentSources } from './component-sources.js'
 
 class PlatformEdgeComponentFixture
 {

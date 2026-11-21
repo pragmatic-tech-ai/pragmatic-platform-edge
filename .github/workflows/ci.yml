@@ -20,6 +20,7 @@ jobs:
       closure-check: true
       image-test: false
       start-smoke: true
+      start-smoke-refusal: 'PRAGMATIC_EDGE_ADMIN_URL must be'
       arm64: true
       helm-chart: ''
     secrets:

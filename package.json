@@ -14,13 +14,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pragmatic-tech-ai/pragmatic-app-host": "^0.17.4",
-    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.17.4",
+    "@pragmatic-tech-ai/pragmatic-app-host": "^0.17.5",
+    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.17.5",
     "@pragmatic-tech-ai/todl-runtime": "^0.7.0"
   },
   "devDependencies": {
-    "@pragmatic-tech-ai/pragmatic-component": "^0.17.4",
-    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.17.4",
+    "@pragmatic-tech-ai/pragmatic-component": "^0.17.5",
+    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.17.5",
     "@types/node": "^22.20.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.0"

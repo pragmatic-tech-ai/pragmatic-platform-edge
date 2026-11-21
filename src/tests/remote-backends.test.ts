@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, it } from 'node:test'
 import { AgentChannelOperation, InternalApiClient } from '@pragmatic-tech-ai/pragmatic-platform-link'
-import { InternalApiCredential } from '@pragmatic-tech-ai/pragmatic-app-host'
+import { InternalApiCredential } from '@pragmatic-tech-ai/pragmatic-component'
 import { RemoteAgentChannelBackend } from '../remote-agent-channel-backend.js'
 import { RemoteDesktopDiscoveryBackend } from '../remote-desktop-discovery-backend.js'
 

@@ -20,9 +20,9 @@ as user 10001; no command is needed.
 
 ## Develop
 
-Packages come from GitHub Packages (`.npmrc`, token in `NODE_AUTH_TOKEN`). The edge reaches no TODL engine and no Mural:
-`legacy-peer-deps` keeps the TODL peers of pragmatic-app-host and pragmatic-realm-adapters out of the tree (the
-Dockerfile's deps stage repeats it), and `src/tests/no-engine-packages.test.ts` holds it there.
+Packages come from GitHub Packages (`.npmrc`, token in `NODE_AUTH_TOKEN`). The edge reaches no TODL engine, no
+todl-runtime and no Mural: its shared packages declare no peer, and `src/tests/no-engine-packages.test.ts` holds the
+tree that way.
 
 ```
 npm ci

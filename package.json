@@ -4,6 +4,10 @@
   "private": true,
   "description": "The keyless public platform edge: the agent channel, desktop discovery and /healthz, answered by the platform admin console over its internal API.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pragmatic-tech-ai/pragmatic-platform-edge.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.5"
@@ -14,13 +18,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pragmatic-tech-ai/pragmatic-app-host": "^0.17.6",
-    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.17.6",
-    "@pragmatic-tech-ai/todl-runtime": "^0.7.0"
+    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.17.7"
   },
   "devDependencies": {
-    "@pragmatic-tech-ai/pragmatic-component": "^0.17.6",
-    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.17.6",
+    "@pragmatic-tech-ai/pragmatic-component": "^0.17.7",
+    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.17.7",
     "@types/node": "^22.20.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.0"

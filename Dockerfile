@@ -17,9 +17,6 @@ WORKDIR /workspace/pragmatic-platform-edge
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 # The manifests and the lock first, so the install layer is reused while they do not change.
 COPY package.json package-lock.json ./
-# The repository's .npmrc stays out of the context, so its `legacy-peer-deps` is repeated here (build stages only: the
-# runtime stage does not inherit it).
-ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=true \
     npm ci --no-audit --no-fund
 
@@ -59,14 +56,15 @@ RUN npm prune --omit=dev --no-audit --no-fund \
 
 FROM node:22-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 ENV NODE_ENV=production
-# uid and gid are both 10001, so the --chown=10001:10001 copies below never leave files under an orphan group.
+# The service runs as 10001 (uid and gid); the app tree is root's and read-only to it, but for the directories the render
+# option WritableDirs names.
 RUN groupadd --system --gid 10001 pragmatic && useradd --system --create-home --uid 10001 --gid 10001 pragmatic
 WORKDIR /workspace/pragmatic-platform-edge
 
 FROM runtime AS pragmatic-platform-edge
-COPY --from=build --chown=10001:10001 /workspace/pragmatic-platform-edge/package.json /workspace/pragmatic-platform-edge/package.json
-COPY --from=build --chown=10001:10001 /workspace/pragmatic-platform-edge/node_modules /workspace/pragmatic-platform-edge/node_modules
-COPY --from=build --chown=10001:10001 /workspace/pragmatic-platform-edge/dist /workspace/pragmatic-platform-edge/dist
+COPY --from=build /workspace/pragmatic-platform-edge/package.json /workspace/pragmatic-platform-edge/package.json
+COPY --from=build /workspace/pragmatic-platform-edge/node_modules /workspace/pragmatic-platform-edge/node_modules
+COPY --from=build /workspace/pragmatic-platform-edge/dist /workspace/pragmatic-platform-edge/dist
 ENV PRAGMATIC_AGENT_CHANNEL_PORT=7100
 ENV PRAGMATIC_AGENT_CHANNEL_BIND=0.0.0.0
 ARG COMPONENT_DIGEST

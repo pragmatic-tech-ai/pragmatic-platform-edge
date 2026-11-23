@@ -16,13 +16,17 @@
 - **`RemoteAgentChannelBackend`**, **`RemoteDesktopDiscoveryBackend`** (`src/remote-*.ts`) - the edge side of the internal
   API: every request is posted verbatim to admin (`InternalApiRoutes.Agent` / `Discover`); admin unreachable, slow or
   answering anything but a well-formed 200 is a 503 `{ error: 'unavailable' }`, never admin's text.
-- **Customer API** - `CustomerApiFront` (`src/customer-api-front.ts`): a `POST` naming a known operation passes the
-  per-address then per-bearer `CustomerApiRateLimit` (fixed one-minute windows, bearer keyed by its SHA-256, in memory),
-  its body is read under 16 KiB and checked to be a JSON object, and `CustomerApiConsoleClient` posts it to the console's
-  internal path with the link bearer (label `pragmatic-customer-api/v1`) and the customer's token in
-  `x-pragmatic-customer-token`; the console's status and body come back verbatim. `CustomerApiWire` holds the contract's
-  wire values (paths, operations, label, limits, refusal bodies), because the contract package cannot be a runtime
-  dependency (its app-host peers are the engine); `customer-api-parity.test.ts` pins them to the contract.
+- **Customer API** - `CustomerApiFront` (`src/customer-api-front.ts`): every request under `/api/customer/v1` first
+  spends its client address's budget (so 404s and 401s spend it too); a `POST` naming a known operation then needs a
+  bearer and spends its budget (`CustomerApiRateLimit`: pragmatic-platform-link's `AuditThrottle` per address, an IPv6
+  address by its /64, and per bearer, keyed by its SHA-256; 10000 keys at most each). Its body is read under 16 KiB and
+  a 10 s deadline and checked to be a JSON object, and `CustomerApiConsoleClient` posts it (5 s hard deadline, aborted
+  when the caller leaves) to the console's internal path with the link bearer (label `pragmatic-customer-api/v1`) and
+  the customer's token in `x-pragmatic-customer-token`. The console's status and body come back verbatim, except a 401
+  `unauthorized` (the link bearer refused), which is a 503 for the customer. Answers are `no-store`. `EdgeHost` bounds
+  every request: headers 10 s, the whole request 30 s. `CustomerApiWire` holds the contract's wire values (paths,
+  operations, label, limits, refusal codes and messages), because the contract package cannot be a runtime dependency
+  (its app-host peers are the engine); `customer-api-parity.test.ts` pins them to the contract.
 - **`PlatformEdgeComponent`** (`src/platform-edge-component.ts`) - the component descriptor (name
   `pragmatic-platform-edge`, version = package version, port `agent-channel` 7100, health `/healthz`);
   `src/release-components.ts` exports it as `Components` for `pragmatic-component-descriptors`, which writes the image's

@@ -3,13 +3,13 @@ import { after, before, describe, it } from 'node:test'
 import { AppHost, AppHostConfig, RouteTable } from '@pragmatic-tech-ai/pragmatic-app-host'
 import { CentralLoginSubject, CustomerCallAuthenticator } from '@pragmatic-tech-ai/pragmatic-entitlements-contract'
 import type { ICentralLoginVerifier } from '@pragmatic-tech-ai/pragmatic-entitlements-contract'
-import { CreateTenantRequest, CustomerApiClient, CustomerApiError, CustomerApiLink, CustomerApiRoutes, CustomerErrorCode, DomainVerification, DomainVerificationRequest, DomainVerificationState, EnrolmentStart, HiveHealth, HiveLevel, HiveView, LeaveHiveRequest, ListHivesRequest, ListTenantsRequest, NotEntitledReason, StartEnrolmentRequest, TenantView } from '@pragmatic-tech-ai/pragmatic-customer-api-contract'
+import { CreateTenantRequest, CustomerApiClient, CustomerApiError, CustomerApiLink, CustomerApiRoutes, CustomerErrorCode, CustomerErrorCodes, DomainVerification, DomainVerificationRequest, DomainVerificationState, EnrolmentStart, HiveHealth, HiveLevel, HiveView, LeaveHiveRequest, ListHivesRequest, ListTenantsRequest, NotEntitledReason, StartEnrolmentRequest, TenantView } from '@pragmatic-tech-ai/pragmatic-customer-api-contract'
 import type { ICustomerApiService } from '@pragmatic-tech-ai/pragmatic-customer-api-contract'
 import type { AgentChannelReply, IAgentChannelBackend, DiscoveryReply, IDesktopDiscoveryBackend } from '@pragmatic-tech-ai/pragmatic-platform-link'
 import { CustomerApiConsoleClient } from '../customer-api-console-client.js'
 import { CustomerApiFront } from '../customer-api-front.js'
 import { CustomerApiRateLimit } from '../customer-api-rate-limit.js'
-import { CustomerApiWire, CustomerApiWireCode } from '../customer-api-wire.js'
+import { CustomerApiWire } from '../customer-api-wire.js'
 import { EdgeHost } from '../edge-host.js'
 
 /** The edge's wire must stay the contract's (the edge cannot take the contract at runtime: its peers carry the engine). */
@@ -35,19 +35,16 @@ describe('customer API wire parity with pragmatic-customer-api-contract', () =>
         assert.equal(CustomerApiWire.MaxTokenLength, CustomerCallAuthenticator.MaxTokenLength)
     })
 
-    it('the refusals the edge writes itself are the contract\'s errors', () =>
+    it('every refusal the edge writes itself is a contract error: code, status and message', () =>
     {
-        const codes: ReadonlyArray<[CustomerApiWireCode, CustomerErrorCode]> = [
-            [CustomerApiWireCode.NotSignedIn, CustomerErrorCode.NotSignedIn],
-            [CustomerApiWireCode.Unavailable, CustomerErrorCode.Unavailable],
-            [CustomerApiWireCode.InvalidRequest, CustomerErrorCode.InvalidRequest],
-        ]
-        for (const [edge, contract] of codes)
+        for (const code of CustomerApiWire.Codes)
         {
+            const contract = CustomerErrorCodes.Parse(code)
+            assert.ok(contract !== undefined, code + ' is a contract code')
             const error = new CustomerApiError(contract)
-            const refusal = CustomerApiWire.Refusal(edge)
-            assert.equal(refusal.Status, error.Status, edge)
-            assert.deepEqual(refusal.Body, { ...error.Fields(), error: error.message }, edge)
+            const refusal = CustomerApiWire.Refusal(code)
+            assert.equal(refusal.Status, CustomerErrorCodes.StatusOf(contract), code)
+            assert.deepEqual(refusal.Body, { ...error.Fields(), error: CustomerErrorCodes.MessageOf(contract) }, code)
         }
     })
 })
@@ -183,6 +180,29 @@ describe('customer API round trip through the edge', () =>
             assert.equal(err.Reason, NotEntitledReason.LimitReached)
             return true
         })
+    })
+
+    it('the rate limit of the edge reaches the client as rate-limited with its Retry-After', async () =>
+    {
+        const front = new CustomerApiFront(new CustomerApiConsoleClient('http://127.0.0.1:' + String(admin.Address().port), credential), new CustomerApiRateLimit({ PerTokenPerMinute: 1 }))
+        const limited = new EdgeHost(new NoAgent(), new NoDiscovery(), false, front)
+        await limited.Listen(0, '127.0.0.1')
+        try
+        {
+            const once = new CustomerApiClient('http://127.0.0.1:' + String(limited.Address().port))
+            await once.ListTenants('ann-token', new ListTenantsRequest('acme'))
+            await assert.rejects(once.ListTenants('ann-token', new ListTenantsRequest('acme')), (err: unknown) =>
+            {
+                assert.ok(err instanceof CustomerApiError)
+                assert.equal(err.CustomerCode, CustomerErrorCode.RateLimited)
+                assert.equal(err.RetryAfterSeconds, 60)
+                return true
+            })
+        }
+        finally
+        {
+            await limited.Close()
+        }
     })
 
     it('a token the console does not accept is not-signed-in; the edge never decides it', async () =>

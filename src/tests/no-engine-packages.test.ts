@@ -3,40 +3,43 @@ import { describe, it } from 'node:test'
 import { InstalledPackages } from './installed-packages.js'
 
 /**
- * The edge's image carries no TODL engine, no todl-runtime and no Mural: none is a production dependency and the
- * production tree (what `npm prune --omit=dev` leaves in the image) reaches none. Its runtime packages
- * (pragmatic-platform-link, pragmatic-component) declare no peer. The customer-API contracts are devDependencies only
- * (the wire parity test): their app-host peers bring the engine into the dev tree, never into the image.
+ * The edge's image carries no TODL engine, no todl-runtime and no Mural. None is a production dependency, and in the
+ * lock every copy of them, of pragmatic-app-host and of the two customer-API contracts (whose peers are the engine) is
+ * `dev`: only the devDependencies (the wire parity test) need them, so the image's `npm prune --omit=dev` removes them.
+ * The runtime packages (pragmatic-platform-link, pragmatic-component) declare no peer.
  */
 class EnginePackages
 {
-    public static readonly Names: readonly string[] = ['@pragmatic-tech-ai/todl', '@pragmatic-tech-ai/todl-runtime', '@pragmatic-tech-ai/mural']
-    public static readonly ContractNames: readonly string[] = ['@pragmatic-tech-ai/pragmatic-customer-api-contract', '@pragmatic-tech-ai/pragmatic-entitlements-contract', '@pragmatic-tech-ai/pragmatic-app-host']
+    public static readonly Engine: readonly string[] = ['@pragmatic-tech-ai/todl', '@pragmatic-tech-ai/todl-runtime', '@pragmatic-tech-ai/mural']
+    public static readonly DevOnly: readonly string[] = [...EnginePackages.Engine, '@pragmatic-tech-ai/pragmatic-app-host', '@pragmatic-tech-ai/pragmatic-customer-api-contract', '@pragmatic-tech-ai/pragmatic-entitlements-contract']
+    public static readonly Runtime: readonly string[] = ['@pragmatic-tech-ai/pragmatic-platform-link', '@pragmatic-tech-ai/pragmatic-component']
 }
 
-describe('no engine packages', () =>
+describe('no engine packages in the image', () =>
 {
     it('package.json declares none of todl, todl-runtime and mural', () =>
     {
-        assert.deepEqual(InstalledPackages.Declared().filter(name => EnginePackages.Names.includes(name)), [])
+        assert.deepEqual(InstalledPackages.Declared().filter(name => EnginePackages.Engine.includes(name)), [])
     })
 
-    it('the production tree reaches none of them', () =>
+    it('the production dependencies are the runtime packages only', () =>
     {
-        const production = InstalledPackages.Production()
-        assert.ok(production.has('@pragmatic-tech-ai/pragmatic-platform-link'))
-        assert.ok(production.has('@pragmatic-tech-ai/pragmatic-component'))
-        assert.deepEqual(EnginePackages.Names.filter(name => production.has(name)), [])
+        assert.deepEqual(InstalledPackages.DeclaredForProduction().sort(), [...EnginePackages.Runtime].sort())
     })
 
-    it('the walk sees peers: from the customer-API contract it reaches the engine', () =>
+    it('every lock entry of the engine, app-host and the contracts is dev-only', () =>
     {
-        assert.ok(InstalledPackages.Reachable(['@pragmatic-tech-ai/pragmatic-customer-api-contract']).has('@pragmatic-tech-ai/todl'))
+        assert.ok(InstalledPackages.LockEntriesOf('@pragmatic-tech-ai/todl').length > 0, 'the dev tree installs todl, so the check is real')
+        const kept = EnginePackages.DevOnly.flatMap(name => InstalledPackages.LockEntriesOf(name)).filter(entry => !entry.Dev)
+        assert.deepEqual(kept, [])
     })
 
-    it('the production tree holds no customer-API contract or app-host (their peers are the engine)', () =>
+    it('the runtime packages are not dev-only', () =>
     {
-        const production = InstalledPackages.Production()
-        assert.deepEqual(EnginePackages.ContractNames.filter(name => production.has(name)), [])
+        for (const name of EnginePackages.Runtime)
+        {
+            const entries = InstalledPackages.LockEntriesOf(name)
+            assert.ok(entries.length > 0 && entries.every(entry => !entry.Dev), name)
+        }
     })
 })

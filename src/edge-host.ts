@@ -4,6 +4,17 @@ import { AgentChannelHost, type IAgentChannelBackend, type IDesktopDiscoveryBack
 import { CustomerApiFront } from './customer-api-front.js'
 import { EdgeClientAddress } from './edge-client-address.js'
 
+/** The listener's request deadlines (Node's own defaults let a slow client hold a connection for five minutes). */
+export interface EdgeHostOptions
+{
+    /** The whole request (headers and body) must arrive within this (default 30 s: a hive uploads up to 1 MiB on the agent channel). */
+    RequestTimeoutMs?: number
+    /** The headers must arrive within this (default 10 s). */
+    HeadersTimeoutMs?: number
+    /** How often Node checks those deadlines (default 1 s). */
+    CheckIntervalMs?: number
+}
+
 /**
  * The edge's one public listener (behind Caddy): the agent channel, desktop discovery, a liveness probe and, when
  * configured, the customer API's relay (CustomerApiFront), nothing else. It holds no state of its own besides the
@@ -14,12 +25,15 @@ export class EdgeHost
     public static readonly HealthzPath = '/healthz'
     private static readonly OkBody = { ok: true }
     private static readonly NotListeningMessage = 'EdgeHost is not listening'
+    public static readonly DefaultRequestTimeoutMs = 30_000
+    public static readonly DefaultHeadersTimeoutMs = 10_000
+    public static readonly DefaultCheckIntervalMs = 1000
 
     private readonly channel: AgentChannelHost
     private readonly discovery: DesktopDiscoveryEndpoint
     private httpServer: HttpServer | undefined
 
-    public constructor(agent: IAgentChannelBackend, discovery: IDesktopDiscoveryBackend, private readonly trustedProxy: boolean, private readonly customer?: CustomerApiFront)
+    public constructor(agent: IAgentChannelBackend, discovery: IDesktopDiscoveryBackend, private readonly trustedProxy: boolean, private readonly customer?: CustomerApiFront, private readonly options: EdgeHostOptions = {})
     {
         this.channel = new AgentChannelHost(agent)
         this.discovery = new DesktopDiscoveryEndpoint(discovery, DesktopDiscoveryEndpoint.NewThrottle())
@@ -27,7 +41,12 @@ export class EdgeHost
 
     public Listen(port: number, bind: string): Promise<void>
     {
-        const server = createServer((req, res) =>
+        const E = EdgeHost
+        const server = createServer({
+            requestTimeout: this.options.RequestTimeoutMs ?? E.DefaultRequestTimeoutMs,
+            headersTimeout: this.options.HeadersTimeoutMs ?? E.DefaultHeadersTimeoutMs,
+            connectionsCheckingInterval: this.options.CheckIntervalMs ?? E.DefaultCheckIntervalMs,
+        }, (req, res) =>
         {
             void this.Serve(req, res)
         })

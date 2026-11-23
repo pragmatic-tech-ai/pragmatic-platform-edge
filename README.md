@@ -11,7 +11,13 @@ The customer API: only the seven operations of pragmatic-customer-api-contract, 
 16 KiB, are relayed (to the console's `/internal/customer/v1/<operation>`, the customer's bearer moved to
 `x-pragmatic-customer-token`); anything else under the prefix is 404, a bigger body 413, a missing bearer 401
 `not-signed-in`, the console unreachable 503 `unavailable`. Limits: 60 calls a minute per bearer, 600 per client address
-(429 `rate-limited`), in memory.
+(429 `rate-limited` with `Retry-After`), in memory, an IPv6 address counted by its /64. Every customer-API answer is
+`Cache-Control: no-store`. A slow body is cut off after 10 s, the console call after 5 s (and when the caller leaves).
+
+The address limit is only as good as the address: behind Caddy the edge needs `PRAGMATIC_EDGE_TRUSTED_PROXY=true` (the
+client is the last `x-forwarded-for` hop) and must be reachable only through Caddy (frontdoor publishes it on host
+loopback). The personal cabinet's server relays every customer from one address, so in the MVP the 600 a minute is a
+ceiling for all cabinet traffic together; the per-bearer limit is what binds one customer.
 
 ## Configuration
 
@@ -33,7 +39,9 @@ Packages come from GitHub Packages (`.npmrc`, token in `NODE_AUTH_TOKEN`). The e
 todl-runtime and no Mural at runtime: its production packages declare no peer, and `src/tests/no-engine-packages.test.ts`
 holds the production tree (what the image keeps) that way. The customer-API contracts are devDependencies only:
 `src/tests/customer-api-parity.test.ts` pins the edge's copy of their wire to them and runs a round trip through the
-contract's client and console routes.
+contract's client and console routes. The image's deps stage installs the devDependencies (and so the engine they
+bring) to build and render the descriptor; its `build` stage runs `npm prune --omit=dev` before the runtime stage copies
+`node_modules`, so the image never carries them (the Dockerfile is rendered: this note lives here, not in it).
 
 ```
 npm ci

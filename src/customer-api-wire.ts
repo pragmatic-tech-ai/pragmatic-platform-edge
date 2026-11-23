@@ -1,6 +1,7 @@
 import { InternalApiCredential, InternalApiSecretError } from '@pragmatic-tech-ai/pragmatic-component'
 
-/** The codes of the refusals the edge writes itself (every other answer is the platform admin console's own). */
+/** The codes of the refusals the edge writes itself (every other answer is the platform admin console's own); each is
+ *  one of the contract's CustomerErrorCode values, with its status and message. */
 export enum CustomerApiWireCode
 {
     InvalidRequest = 'invalid-request',
@@ -45,6 +46,7 @@ export class CustomerApiWire
     public static readonly BodyLimit = 16384
     public static readonly TokenHeader = 'x-pragmatic-customer-token'
     public static readonly MaxTokenLength = 16384
+    public static readonly Codes: readonly CustomerApiWireCode[] = Object.values(CustomerApiWireCode)
     public static readonly Operations: readonly string[] = [
         'create-tenant',
         'list-tenants',
@@ -58,8 +60,8 @@ export class CustomerApiWire
     private static readonly Table: ReadonlyMap<CustomerApiWireCode, readonly [number, string]> = new Map<CustomerApiWireCode, readonly [number, string]>([
         [CustomerApiWireCode.InvalidRequest, [400, 'The request is not valid']],
         [CustomerApiWireCode.NotSignedIn, [401, 'Not signed in']],
-        [CustomerApiWireCode.NotFound, [404, 'Not found']],
-        [CustomerApiWireCode.TooLarge, [413, 'Request body too large']],
+        [CustomerApiWireCode.NotFound, [404, 'No such operation']],
+        [CustomerApiWireCode.TooLarge, [413, 'The request is too large']],
         [CustomerApiWireCode.RateLimited, [429, 'Too many requests']],
         [CustomerApiWireCode.Unavailable, [503, 'The platform is unavailable']],
     ])

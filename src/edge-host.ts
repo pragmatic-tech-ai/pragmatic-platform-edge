@@ -28,6 +28,10 @@ export class EdgeHost
     public static readonly DefaultRequestTimeoutMs = 30_000
     public static readonly DefaultHeadersTimeoutMs = 10_000
     public static readonly DefaultCheckIntervalMs = 1000
+    /** Above Node's 16 KiB default, so a customer bearer of up to CustomerApiWire.MaxTokenLength (16 KiB) reaches the
+     *  front's own length check instead of Node's 431. */
+    public static readonly MaxHeaderBytes = 20 * 1024
+    private static readonly ErrorEvent = 'error'
 
     private readonly channel: AgentChannelHost
     private readonly discovery: DesktopDiscoveryEndpoint
@@ -46,16 +50,17 @@ export class EdgeHost
             requestTimeout: this.options.RequestTimeoutMs ?? E.DefaultRequestTimeoutMs,
             headersTimeout: this.options.HeadersTimeoutMs ?? E.DefaultHeadersTimeoutMs,
             connectionsCheckingInterval: this.options.CheckIntervalMs ?? E.DefaultCheckIntervalMs,
+            maxHeaderSize: E.MaxHeaderBytes,
         }, (req, res) =>
         {
             void this.Serve(req, res)
         })
         return new Promise((resolve, reject) =>
         {
-            server.once('error', reject)
+            server.once(EdgeHost.ErrorEvent, reject)
             server.listen(port, bind, () =>
             {
-                server.off('error', reject)
+                server.off(EdgeHost.ErrorEvent, reject)
                 this.httpServer = server
                 resolve()
             })

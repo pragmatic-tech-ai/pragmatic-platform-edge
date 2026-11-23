@@ -10,7 +10,8 @@ import { InstalledPackages } from './installed-packages.js'
  */
 class EnginePackages
 {
-    public static readonly Engine: readonly string[] = ['@pragmatic-tech-ai/todl', '@pragmatic-tech-ai/todl-runtime', '@pragmatic-tech-ai/mural']
+    public static readonly Todl = '@pragmatic-tech-ai/todl'
+    public static readonly Engine: readonly string[] = [EnginePackages.Todl, '@pragmatic-tech-ai/todl-runtime', '@pragmatic-tech-ai/mural']
     public static readonly DevOnly: readonly string[] = [...EnginePackages.Engine, '@pragmatic-tech-ai/pragmatic-app-host', '@pragmatic-tech-ai/pragmatic-customer-api-contract', '@pragmatic-tech-ai/pragmatic-entitlements-contract']
     public static readonly Runtime: readonly string[] = ['@pragmatic-tech-ai/pragmatic-platform-link', '@pragmatic-tech-ai/pragmatic-component']
 }
@@ -29,7 +30,7 @@ describe('no engine packages in the image', () =>
 
     it('every lock entry of the engine, app-host and the contracts is dev-only', () =>
     {
-        assert.ok(InstalledPackages.LockEntriesOf('@pragmatic-tech-ai/todl').length > 0, 'the dev tree installs todl, so the check is real')
+        assert.ok(InstalledPackages.LockEntriesOf(EnginePackages.Todl).length > 0, 'the dev tree installs todl, so the check is real')
         const kept = EnginePackages.DevOnly.flatMap(name => InstalledPackages.LockEntriesOf(name)).filter(entry => !entry.Dev)
         assert.deepEqual(kept, [])
     })

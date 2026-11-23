@@ -25,9 +25,6 @@ export interface CustomerApiRateLimitOptions
     /** Keys each throttle holds at most (oldest evicted first). */
     MaxKeys?: number
     Now?: () => number
-    /** The throttles themselves (tests observe the keys through them). */
-    TokenThrottle?: AuditThrottle
-    AddressThrottle?: AuditThrottle
 }
 
 /**
@@ -57,6 +54,8 @@ export class CustomerApiRateLimit
     private static readonly V4Family = 4
     private static readonly V6Family = 6
     private static readonly HexRadix = 16
+    private static readonly DottedSeparator = '.'
+    private static readonly OctetShift = 256
 
     private readonly tokens: AuditThrottle
     private readonly addresses: AuditThrottle
@@ -66,8 +65,8 @@ export class CustomerApiRateLimit
         const R = CustomerApiRateLimit
         const now = options.Now ?? (() => Date.now())
         const maxKeys = options.MaxKeys ?? R.DefaultMaxKeys
-        this.tokens = options.TokenThrottle ?? new AuditThrottle({ maxHits: options.PerTokenPerMinute ?? R.DefaultPerTokenPerMinute, windowMs: R.WindowMs, lockoutMs: R.WindowMs, maxKeys, now })
-        this.addresses = options.AddressThrottle ?? new AuditThrottle({ maxHits: options.PerAddressPerMinute ?? R.DefaultPerAddressPerMinute, windowMs: R.WindowMs, lockoutMs: R.WindowMs, maxKeys, now })
+        this.tokens = new AuditThrottle({ maxHits: options.PerTokenPerMinute ?? R.DefaultPerTokenPerMinute, windowMs: R.WindowMs, lockoutMs: R.WindowMs, maxKeys, now })
+        this.addresses = new AuditThrottle({ maxHits: options.PerAddressPerMinute ?? R.DefaultPerAddressPerMinute, windowMs: R.WindowMs, lockoutMs: R.WindowMs, maxKeys, now })
     }
 
     /** The key a bearer is counted under: its SHA-256. */
@@ -116,18 +115,38 @@ export class CustomerApiRateLimit
         return new RateDecision(after.allowed, after.retryAfterMs)
     }
 
-    /** The eight groups of an IPv6 address (no embedded IPv4 beyond the mapped form handled above). */
+    /** The eight groups of an IPv6 address; a trailing dotted IPv4 part stands for the last two. */
     private static Expand(address: string): string[]
     {
         const R = CustomerApiRateLimit
         const [head, tail] = address.includes(R.Elision) ? address.split(R.Elision) as [string, string] : [address, undefined]
-        const left = head === '' ? [] : head.split(R.GroupSeparator)
+        const left = R.GroupsOf(head)
         if (tail === undefined)
         {
             return left
         }
-        const right = tail === '' ? [] : tail.split(R.GroupSeparator)
+        const right = R.GroupsOf(tail)
         const zeros = new Array<string>(R.V6Groups - left.length - right.length).fill(R.ZeroGroup)
         return [...left, ...zeros, ...right]
+    }
+
+    /** The groups of one side of `::`, a trailing dotted IPv4 part split into its two 16-bit groups. */
+    private static GroupsOf(part: string): string[]
+    {
+        const R = CustomerApiRateLimit
+        if (part === '')
+        {
+            return []
+        }
+        const groups = part.split(R.GroupSeparator)
+        const last = groups[groups.length - 1] as string
+        if (isIP(last) !== R.V4Family)
+        {
+            return groups
+        }
+        const octets = last.split(R.DottedSeparator).map(Number) as [number, number, number, number]
+        const high = (octets[0] * R.OctetShift + octets[1]).toString(R.HexRadix)
+        const low = (octets[2] * R.OctetShift + octets[3]).toString(R.HexRadix)
+        return [...groups.slice(0, -1), high, low]
     }
 }

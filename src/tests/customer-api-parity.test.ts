@@ -29,6 +29,12 @@ describe('customer API wire parity with pragmatic-customer-api-contract', () =>
         }
     })
 
+    it('the console refusal of the link bearer is the contract unauthorized', () =>
+    {
+        assert.equal(CustomerApiWire.LinkRefusedCode, CustomerErrorCode.Unauthorized)
+        assert.equal(CustomerApiWire.LinkRefusedStatus, CustomerErrorCodes.StatusOf(CustomerErrorCode.Unauthorized))
+    })
+
     it('the customer token header and its limit', () =>
     {
         assert.equal(CustomerApiWire.TokenHeader, CustomerCallAuthenticator.TokenHeader)
@@ -51,6 +57,9 @@ describe('customer API wire parity with pragmatic-customer-api-contract', () =>
 
 class Subjects
 {
+    public static readonly AnnToken = 'ann-token'
+    public static readonly Loopback = 'http://127.0.0.1:'
+
     public static readonly Ann = CentralLoginSubject.Of('https://login.example.test/realms/central', 'ann', 'ann@acme.test')
 }
 
@@ -58,7 +67,7 @@ class TokenVerifier implements ICentralLoginVerifier
 {
     public async Verify(token: string): Promise<CentralLoginSubject | undefined>
     {
-        return token === 'ann-token' ? Subjects.Ann : undefined
+        return token === Subjects.AnnToken ? Subjects.Ann : undefined
     }
 }
 
@@ -131,49 +140,80 @@ class NoDiscovery implements IDesktopDiscoveryBackend
     }
 }
 
-/** The contract's client → this edge → the contract's console routes on an AppHost. */
+/** The contract's console routes on an AppHost, this edge in front of them, and the contract's client. */
+class RoundTripFixture
+{
+    public static readonly Bind = '127.0.0.1'
+    public readonly Credential = CustomerApiLink.CredentialFromSecret(Buffer.alloc(32, 9))
+    public readonly Service = new RecordingService()
+    private readonly admin: AppHost
+    private readonly edges: EdgeHost[] = []
+
+    public constructor()
+    {
+        const routes = new RouteTable()
+        new CustomerApiRoutes(this.Service, new CustomerCallAuthenticator(this.Credential, new TokenVerifier())).MountOn(routes)
+        this.admin = new AppHost(new AppHostConfig(), { Routes: routes })
+    }
+
+    public async Start(): Promise<void>
+    {
+        await this.admin.Listen(0, RoundTripFixture.Bind)
+    }
+
+    /** An edge in front of the console (with its own limit) and a client of it. */
+    public async ClientThroughEdge(limit: CustomerApiRateLimit = new CustomerApiRateLimit()): Promise<CustomerApiClient>
+    {
+        const front = new CustomerApiFront(new CustomerApiConsoleClient(Subjects.Loopback + String(this.admin.Address().port), this.Credential), limit)
+        const edge = new EdgeHost(new NoAgent(), new NoDiscovery(), false, front)
+        await edge.Listen(0, RoundTripFixture.Bind)
+        this.edges.push(edge)
+        return new CustomerApiClient(Subjects.Loopback + String(edge.Address().port))
+    }
+
+    public async Stop(): Promise<void>
+    {
+        for (const edge of this.edges)
+        {
+            await edge.Close()
+        }
+        await this.admin.Close()
+    }
+}
+
 describe('customer API round trip through the edge', () =>
 {
-    const credential = CustomerApiLink.CredentialFromSecret(Buffer.alloc(32, 9))
-    const service = new RecordingService()
-    const routes = new RouteTable()
-    new CustomerApiRoutes(service, new CustomerCallAuthenticator(credential, new TokenVerifier())).MountOn(routes)
-    const admin = new AppHost(new AppHostConfig(), { Routes: routes })
-    let edge: EdgeHost
-    let client: CustomerApiClient
+    const fixture = new RoundTripFixture()
 
     before(async () =>
     {
-        await admin.Listen(0, '127.0.0.1')
-        const front = new CustomerApiFront(new CustomerApiConsoleClient('http://127.0.0.1:' + String(admin.Address().port), credential), new CustomerApiRateLimit())
-        edge = new EdgeHost(new NoAgent(), new NoDiscovery(), false, front)
-        await edge.Listen(0, '127.0.0.1')
-        client = new CustomerApiClient('http://127.0.0.1:' + String(edge.Address().port))
+        await fixture.Start()
     })
 
     after(async () =>
     {
-        await edge.Close()
-        await admin.Close()
+        await fixture.Stop()
     })
 
     it('every operation answers through the edge for a signed-in customer', async () =>
     {
-        const created = await client.CreateTenant('ann-token', new CreateTenantRequest('acme', 'acme-prod', 'Acme'))
+        const client = await fixture.ClientThroughEdge()
+        const created = await client.CreateTenant(Subjects.AnnToken, new CreateTenantRequest('acme', 'acme-prod', 'Acme'))
         assert.equal(created.TenantId, 'acme-prod')
-        assert.equal((await client.ListTenants('ann-token', new ListTenantsRequest('acme'))).length, 1)
-        assert.equal((await client.StartEnrolment('ann-token', new StartEnrolmentRequest('acme', 'acme-prod', HiveLevel.Hosted))).PlacementId, 'placement-1')
-        assert.equal((await client.StartEnrolment('ann-token', new StartEnrolmentRequest('acme', 'acme-prod', HiveLevel.Standalone))).Level, HiveLevel.Standalone)
-        assert.equal((await client.ListHives('ann-token', new ListHivesRequest('acme'))).length, 1)
-        assert.equal((await client.StartDomainVerification('ann-token', new DomainVerificationRequest('acme', 'acme-prod', 'acme.test'))).State, DomainVerificationState.Pending)
-        assert.equal((await client.CheckDomainVerification('ann-token', new DomainVerificationRequest('acme', 'acme-prod', 'acme.test'))).State, DomainVerificationState.Verified)
-        assert.equal((await client.LeaveHive('ann-token', new LeaveHiveRequest('acme', 'hive-1'))).Health, HiveHealth.Gone)
-        assert.ok(service.Callers.every(key => key === Subjects.Ann.Key))
+        assert.equal((await client.ListTenants(Subjects.AnnToken, new ListTenantsRequest('acme'))).length, 1)
+        assert.equal((await client.StartEnrolment(Subjects.AnnToken, new StartEnrolmentRequest('acme', 'acme-prod', HiveLevel.Hosted))).PlacementId, 'placement-1')
+        assert.equal((await client.StartEnrolment(Subjects.AnnToken, new StartEnrolmentRequest('acme', 'acme-prod', HiveLevel.Standalone))).Level, HiveLevel.Standalone)
+        assert.equal((await client.ListHives(Subjects.AnnToken, new ListHivesRequest('acme'))).length, 1)
+        assert.equal((await client.StartDomainVerification(Subjects.AnnToken, new DomainVerificationRequest('acme', 'acme-prod', 'acme.test'))).State, DomainVerificationState.Pending)
+        assert.equal((await client.CheckDomainVerification(Subjects.AnnToken, new DomainVerificationRequest('acme', 'acme-prod', 'acme.test'))).State, DomainVerificationState.Verified)
+        assert.equal((await client.LeaveHive(Subjects.AnnToken, new LeaveHiveRequest('acme', 'hive-1'))).Health, HiveHealth.Gone)
+        assert.ok(fixture.Service.Callers.every(key => key === Subjects.Ann.Key))
     })
 
     it('a refusal keeps its code and reason end to end', async () =>
     {
-        await assert.rejects(client.CreateTenant('ann-token', new CreateTenantRequest('acme', 'acme-two', 'Acme')), (err: unknown) =>
+        const client = await fixture.ClientThroughEdge()
+        await assert.rejects(client.CreateTenant(Subjects.AnnToken, new CreateTenantRequest('acme', 'acme-two', 'Acme')), (err: unknown) =>
         {
             assert.ok(err instanceof CustomerApiError)
             assert.equal(err.CustomerCode, CustomerErrorCode.NotEntitled)
@@ -184,29 +224,20 @@ describe('customer API round trip through the edge', () =>
 
     it('the rate limit of the edge reaches the client as rate-limited with its Retry-After', async () =>
     {
-        const front = new CustomerApiFront(new CustomerApiConsoleClient('http://127.0.0.1:' + String(admin.Address().port), credential), new CustomerApiRateLimit({ PerTokenPerMinute: 1 }))
-        const limited = new EdgeHost(new NoAgent(), new NoDiscovery(), false, front)
-        await limited.Listen(0, '127.0.0.1')
-        try
+        const once = await fixture.ClientThroughEdge(new CustomerApiRateLimit({ PerTokenPerMinute: 1 }))
+        await once.ListTenants(Subjects.AnnToken, new ListTenantsRequest('acme'))
+        await assert.rejects(once.ListTenants(Subjects.AnnToken, new ListTenantsRequest('acme')), (err: unknown) =>
         {
-            const once = new CustomerApiClient('http://127.0.0.1:' + String(limited.Address().port))
-            await once.ListTenants('ann-token', new ListTenantsRequest('acme'))
-            await assert.rejects(once.ListTenants('ann-token', new ListTenantsRequest('acme')), (err: unknown) =>
-            {
-                assert.ok(err instanceof CustomerApiError)
-                assert.equal(err.CustomerCode, CustomerErrorCode.RateLimited)
-                assert.equal(err.RetryAfterSeconds, 60)
-                return true
-            })
-        }
-        finally
-        {
-            await limited.Close()
-        }
+            assert.ok(err instanceof CustomerApiError)
+            assert.equal(err.CustomerCode, CustomerErrorCode.RateLimited)
+            assert.equal(err.RetryAfterSeconds, 60)
+            return true
+        })
     })
 
     it('a token the console does not accept is not-signed-in; the edge never decides it', async () =>
     {
+        const client = await fixture.ClientThroughEdge()
         await assert.rejects(client.ListTenants('someone-else', new ListTenantsRequest('acme')), (err: unknown) => err instanceof CustomerApiError && err.CustomerCode === CustomerErrorCode.NotSignedIn)
     })
 })

@@ -1,9 +1,9 @@
 import { strict as assert } from 'node:assert'
+import { createHash } from 'node:crypto'
 import { createServer, request, type IncomingHttpHeaders, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { connect, type AddressInfo } from 'node:net'
 import { afterEach, describe, it } from 'node:test'
 import { InternalApiCredential } from '@pragmatic-tech-ai/pragmatic-component'
-import { AuditThrottle } from '@pragmatic-tech-ai/pragmatic-platform-link'
 import type { AgentChannelReply, AgentChannelRequest, IAgentChannelBackend, DiscoveryReply, IDesktopDiscoveryBackend } from '@pragmatic-tech-ai/pragmatic-platform-link'
 import { CustomerApiConsoleClient, type CustomerApiReply } from '../customer-api-console-client.js'
 import { CustomerApiFront, type ICustomerApiConsole } from '../customer-api-front.js'
@@ -48,6 +48,7 @@ enum ConsoleMode
 /** A stand-in platform admin console: records every call and answers what the test sets. */
 class FakeConsole
 {
+    public static readonly MaxHeaderBytes = 32 * 1024
     public readonly Seen: Seen[] = []
     public readonly Aborted: string[] = []
     public Status = 200
@@ -58,7 +59,8 @@ class FakeConsole
 
     public async Start(): Promise<string>
     {
-        const server = createServer((req, res) => this.Serve(req, res))
+        // Above Node's 16 KiB header default, like the edge, so a 16 KiB bearer reaches this console too.
+        const server = createServer({ maxHeaderSize: FakeConsole.MaxHeaderBytes }, (req, res) => this.Serve(req, res))
         await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()))
         this.server = server
         return 'http://127.0.0.1:' + String((server.address() as AddressInfo).port)
@@ -97,7 +99,7 @@ class FakeConsole
             {
                 return
             }
-            res.writeHead(this.Status, { 'content-type': 'application/json' })
+            res.writeHead(this.Status, { [FrontFixture.ContentType]: FrontFixture.Json })
             if (this.Mode === ConsoleMode.Drip)
             {
                 const timer = setInterval(() => res.write(' '), 20)
@@ -133,22 +135,15 @@ class ManualClock
     }
 }
 
-/** An AuditThrottle that remembers every key it counted. */
-class RecordingThrottle extends AuditThrottle
-{
-    public readonly Keys: string[] = []
-
-    public override RecordHit(ip: string): void
-    {
-        this.Keys.push(ip)
-        super.RecordHit(ip)
-    }
-}
-
 class FrontFixture
 {
     public static readonly Credential = InternalApiCredential.FromSecret(Buffer.alloc(32, 7), CustomerApiWire.CredentialLabel)
     public static readonly Token = 'eyJhbGciOiJSUzI1NiJ9.customer-token-payload.signature'
+    public static readonly BearerPrefix = 'Bearer '
+    public static readonly Bearer = FrontFixture.BearerPrefix + FrontFixture.Token
+    public static readonly Post = 'POST'
+    public static readonly ContentType = 'content-type'
+    public static readonly Json = 'application/json'
     public static readonly OtherToken = 'another-token'
     public static readonly Prefix = '/api/customer/v1/'
     public static readonly ListTenants = 'list-tenants'
@@ -188,7 +183,7 @@ class FrontFixture
         const addr = (this.Host as EdgeHost).Address()
         return new Promise((resolve, reject) =>
         {
-            const req = request({ host: addr.address, port: addr.port, method, path, headers: { 'content-type': 'application/json', ...headers } }, res =>
+            const req = request({ host: addr.address, port: addr.port, method, path, headers: { [FrontFixture.ContentType]: FrontFixture.Json, ...headers } }, res =>
             {
                 const chunks: Buffer[] = []
                 res.on('data', c => chunks.push(c as Buffer))
@@ -208,9 +203,9 @@ class FrontFixture
         const headers: Record<string, string> = { ...extra }
         if (token !== null)
         {
-            headers.authorization = 'Bearer ' + token
+            headers.authorization = FrontFixture.BearerPrefix + token
         }
-        return this.Send('POST', FrontFixture.Prefix + operation, headers, JSON.stringify(body))
+        return this.Send(FrontFixture.Post, FrontFixture.Prefix + operation, headers, JSON.stringify(body))
     }
 
     /** Writes raw bytes and resolves with what came back once the edge closed the connection (or `waitMs` passed). */
@@ -241,7 +236,7 @@ class FrontFixture
     public async CallAndLeave(admin: FakeConsole): Promise<void>
     {
         const addr = (this.Host as EdgeHost).Address()
-        const req = request({ host: addr.address, port: addr.port, method: 'POST', path: FrontFixture.ListTenantsPath, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + FrontFixture.Token } })
+        const req = request({ host: addr.address, port: addr.port, method: FrontFixture.Post, path: FrontFixture.ListTenantsPath, headers: { [FrontFixture.ContentType]: FrontFixture.Json, authorization: FrontFixture.Bearer } })
         req.on('error', () => undefined)
         req.end(JSON.stringify(FrontFixture.Body))
         while (admin.Seen.length === 0)
@@ -287,11 +282,11 @@ describe('CustomerApiFront', () =>
         assert.equal(reply.headers['cache-control'], 'no-store')
         assert.equal(admin.Seen.length, 1)
         const seen = admin.Seen[0]!
-        assert.equal(seen.method, 'POST')
+        assert.equal(seen.method, FrontFixture.Post)
         assert.equal(seen.path, '/internal/customer/v1/create-tenant')
         assert.equal(seen.headers.authorization, FrontFixture.Credential.AuthorizationValue())
         assert.equal(seen.headers['x-pragmatic-customer-token'], FrontFixture.Token)
-        assert.equal(seen.headers.accept, 'application/json')
+        assert.equal(seen.headers.accept, FrontFixture.Json)
         assert.deepEqual(JSON.parse(seen.body), body)
     })
 
@@ -300,13 +295,13 @@ describe('CustomerApiFront', () =>
         const admin = await fixture.Start()
         const paths = ['/api/customer/v1/delete-client', '/api/customer/v1/', '/api/customer/v1', '/api/customer/v1/list-tenants/x', '/api/customer/v1/list-tenants/',
             '/api/customer/v1/list-tenants?x=1', '/api/customer/v1/LIST-TENANTS', '/api/customer/v1/list%2Dtenants', '/api/customer/v1/%2E%2E/list-tenants',
-            '//api/customer/v1/list-tenants', '/API/customer/v1/list-tenants', '/api/customer/v2/list-tenants', '/internal/customer/v1/list-tenants']
+            '//api/customer/v1/list-tenants', '/api/customer/v1%2Flist-tenants', '/api/customer/v1/list-tenants%2F', '/API/customer/v1/list-tenants', '/api/customer/v2/list-tenants', '/internal/customer/v1/list-tenants']
         for (const path of paths)
         {
-            const reply = await fixture.Send('POST', path, { authorization: 'Bearer ' + FrontFixture.Token }, '{}')
+            const reply = await fixture.Send(FrontFixture.Post, path, { authorization: FrontFixture.Bearer }, '{}')
             assert.equal(reply.status, 404, path)
         }
-        assert.equal((await fixture.Send('GET', FrontFixture.ListTenantsPath, { authorization: 'Bearer ' + FrontFixture.Token })).status, 404)
+        assert.equal((await fixture.Send('GET', FrontFixture.ListTenantsPath, { authorization: FrontFixture.Bearer })).status, 404)
         assert.equal(admin.Seen.length, 0)
     })
 
@@ -327,11 +322,11 @@ describe('CustomerApiFront', () =>
     {
         const admin = await fixture.Start()
         const big = JSON.stringify({ ClientId: 'acme', Pad: 'x'.repeat(17 * 1024) })
-        const declared = await fixture.Send('POST', FrontFixture.ListTenantsPath, { authorization: 'Bearer ' + FrontFixture.Token, 'content-length': String(Buffer.byteLength(big)) }, big)
+        const declared = await fixture.Send(FrontFixture.Post, FrontFixture.ListTenantsPath, { authorization: FrontFixture.Bearer, 'content-length': String(Buffer.byteLength(big)) }, big)
         assert.equal(declared.status, 413)
         assert.deepEqual(declared.body, { error: 'The request is too large', code: 'too-large' })
         assert.equal(declared.headers.connection, 'close')
-        const chunked = await fixture.Send('POST', FrontFixture.ListTenantsPath, { authorization: 'Bearer ' + FrontFixture.Token, 'transfer-encoding': 'chunked' }, big)
+        const chunked = await fixture.Send(FrontFixture.Post, FrontFixture.ListTenantsPath, { authorization: FrontFixture.Bearer, 'transfer-encoding': 'chunked' }, big)
         assert.equal(chunked.status, 413)
         assert.equal(admin.Seen.length, 0)
     })
@@ -340,17 +335,9 @@ describe('CustomerApiFront', () =>
     {
         const admin = await fixture.Start()
         const huge = Buffer.alloc(1048577, 0x20)
-        try
-        {
-            const reply = await fixture.Send('POST', FrontFixture.ListTenantsPath, { authorization: 'Bearer ' + FrontFixture.Token, 'transfer-encoding': 'chunked' }, huge)
-            assert.equal(reply.status, 413)
-        }
-        catch (err)
-        {
-            // The edge closes the connection after its 413; a caller still writing may see the reset first.
-            assert.ok(['ECONNRESET', 'EPIPE'].includes((err as { code?: string }).code ?? ''), String(err))
-        }
-        const raw = await fixture.Raw('POST ' + FrontFixture.ListTenantsPath + ' HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nAuthorization: Bearer ' + FrontFixture.Token + '\r\nContent-Length: 2147483647\r\n\r\n{', 2000)
+        const reply = await fixture.Send(FrontFixture.Post, FrontFixture.ListTenantsPath, { authorization: FrontFixture.Bearer, 'transfer-encoding': 'chunked' }, huge)
+        assert.equal(reply.status, 413)
+        const raw = await fixture.Raw('POST ' + FrontFixture.ListTenantsPath + ' HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nAuthorization: ' + FrontFixture.Bearer + '\r\nContent-Length: 2147483647\r\n\r\n{', 2000)
         assert.ok(raw.text.startsWith('HTTP/1.1 413'), raw.text)
         assert.equal(raw.closed, true)
         assert.equal(admin.Seen.length, 0)
@@ -361,7 +348,7 @@ describe('CustomerApiFront', () =>
         const admin = await fixture.Start()
         for (const body of ['not json', '[1,2]', '"text"', 'null'])
         {
-            const reply = await fixture.Send('POST', FrontFixture.ListTenantsPath, { authorization: 'Bearer ' + FrontFixture.Token }, body)
+            const reply = await fixture.Send(FrontFixture.Post, FrontFixture.ListTenantsPath, { authorization: FrontFixture.Bearer }, body)
             assert.equal(reply.status, 400, body)
             assert.deepEqual(reply.body, { error: 'The request is not valid', code: 'invalid-request' })
         }
@@ -371,7 +358,7 @@ describe('CustomerApiFront', () =>
     it('a body that does not arrive in time drops the connection, never relayed', async () =>
     {
         const admin = await fixture.Start({ bodyTimeoutMs: 200 })
-        const raw = await fixture.Raw('POST ' + FrontFixture.ListTenantsPath + ' HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nAuthorization: Bearer ' + FrontFixture.Token + '\r\nContent-Length: 20\r\n\r\n{"Cli', 3000)
+        const raw = await fixture.Raw('POST ' + FrontFixture.ListTenantsPath + ' HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nAuthorization: ' + FrontFixture.Bearer + '\r\nContent-Length: 20\r\n\r\n{"Cli', 3000)
         assert.equal(raw.closed, true)
         assert.equal(raw.text, '')
         assert.equal(admin.Seen.length, 0)
@@ -389,14 +376,23 @@ describe('CustomerApiFront', () =>
         const admin = await fixture.Start()
         assert.deepEqual((await fixture.Call(FrontFixture.ListTenants, null)).body, FrontFixture.NotSignedIn)
         assert.equal((await fixture.Call(FrontFixture.ListTenants, null, {}, { authorization: 'Basic abc' })).status, 401)
-        assert.equal((await fixture.Call(FrontFixture.ListTenants, null, {}, { authorization: 'Bearer ' })).status, 401)
+        assert.equal((await fixture.Call(FrontFixture.ListTenants, null, {}, { authorization: FrontFixture.BearerPrefix })).status, 401)
         assert.equal(admin.Seen.length, 0)
+    })
+
+    it('a bearer of 16 KiB reaches the console; one byte more is not-signed-in (the listener takes the header)', async () =>
+    {
+        const admin = await fixture.Start()
+        assert.equal((await fixture.Call(FrontFixture.ListTenants, 'x'.repeat(16384))).status, 200)
+        assert.deepEqual((await fixture.Call(FrontFixture.ListTenants, 'x'.repeat(16385))).body, FrontFixture.NotSignedIn)
+        assert.equal(admin.Seen.length, 1)
+        assert.equal(admin.Seen[0]!.headers['x-pragmatic-customer-token'], 'x'.repeat(16384))
     })
 
     it('a bearer is taken up to 16 KiB and no longer', () =>
     {
-        assert.equal(CustomerApiFront.TokenOf('Bearer ' + 'x'.repeat(16384)), 'x'.repeat(16384))
-        assert.equal(CustomerApiFront.TokenOf('Bearer ' + 'x'.repeat(16385)), undefined)
+        assert.equal(CustomerApiFront.TokenOf(FrontFixture.BearerPrefix + 'x'.repeat(16384)), 'x'.repeat(16384))
+        assert.equal(CustomerApiFront.TokenOf(FrontFixture.BearerPrefix + 'x'.repeat(16385)), undefined)
         assert.equal(CustomerApiFront.TokenOf(['Bearer a', 'Bearer b']), undefined)
         assert.equal(CustomerApiFront.TokenOf('bearer abc'), undefined)
     })
@@ -433,8 +429,14 @@ describe('CustomerApiFront', () =>
     {
         const admin = await fixture.Start()
         admin.Mode = ConsoleMode.Hang
-        await fixture.CallAndLeave(admin)
-        assert.ok(await FrontFixture.WaitFor(() => admin.Aborted.length === 1, 2000))
+        const capture = new LogCapture()
+        await capture.During(async () =>
+        {
+            await fixture.CallAndLeave(admin)
+            assert.ok(await FrontFixture.WaitFor(() => admin.Aborted.length === 1, 2000))
+            await new Promise(resolve => setTimeout(resolve, 50))
+        })
+        assert.deepEqual(capture.Lines, [], 'a caller leaving is not logged')
     })
 
     it('the admin refusing the link bearer is the platform\'s fault: 503, logged without secrets', async () =>
@@ -540,11 +542,12 @@ describe('CustomerApiRateLimit', () =>
 {
     it('keys bearers by their SHA-256, never the token itself', () =>
     {
-        const tokens = new RecordingThrottle()
-        const limit = new CustomerApiRateLimit({ TokenThrottle: tokens })
-        limit.HitToken(FrontFixture.Token)
-        assert.deepEqual(tokens.Keys, [CustomerApiRateLimit.TokenKey(FrontFixture.Token)])
-        assert.ok(!tokens.Keys[0]!.includes(FrontFixture.Token))
+        assert.equal(CustomerApiRateLimit.TokenKey(FrontFixture.Token), createHash('sha256').update(FrontFixture.Token).digest('base64url'))
+        assert.ok(!CustomerApiRateLimit.TokenKey(FrontFixture.Token).includes(FrontFixture.Token))
+        const limit = new CustomerApiRateLimit({ PerTokenPerMinute: 1 })
+        assert.equal(limit.HitToken(FrontFixture.Token).Allowed, true)
+        assert.equal(limit.HitToken(FrontFixture.Token).Allowed, false)
+        assert.equal(limit.HitToken(FrontFixture.OtherToken).Allowed, true)
     })
 
     it('keys IPv6 by its /64 and IPv4-mapped addresses by their IPv4 address', () =>
@@ -554,6 +557,9 @@ describe('CustomerApiRateLimit', () =>
         assert.equal(CustomerApiRateLimit.AddressKey('::1'), '0:0:0:0::/64')
         assert.equal(CustomerApiRateLimit.AddressKey('fe80::1%eth0'), 'fe80:0:0:0::/64')
         assert.equal(CustomerApiRateLimit.AddressKey('::ffff:203.0.113.5'), '203.0.113.5')
+        assert.equal(CustomerApiRateLimit.AddressKey('::3:4:5:6:1.2.3.4'), '0:0:3:4::/64')
+        assert.equal(CustomerApiRateLimit.AddressKey('2001:db8:1:2:3:4:1.2.3.4'), '2001:db8:1:2::/64')
+        assert.equal(CustomerApiRateLimit.AddressKey('64:ff9b::198.51.100.1'), '64:ff9b:0:0::/64')
         assert.equal(CustomerApiRateLimit.AddressKey('203.0.113.5'), '203.0.113.5')
     })
 

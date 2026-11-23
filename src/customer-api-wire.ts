@@ -46,6 +46,9 @@ export class CustomerApiWire
     public static readonly BodyLimit = 16384
     public static readonly TokenHeader = 'x-pragmatic-customer-token'
     public static readonly MaxTokenLength = 16384
+    /** The console's refusal of the link bearer itself (a platform fault, never the customer's): status and code. */
+    public static readonly LinkRefusedStatus = 401
+    public static readonly LinkRefusedCode = 'unauthorized'
     public static readonly Codes: readonly CustomerApiWireCode[] = Object.values(CustomerApiWireCode)
     public static readonly Operations: readonly string[] = [
         'create-tenant',

@@ -24,7 +24,9 @@
   when the caller leaves) to the console's internal path with the link bearer (label `pragmatic-customer-api/v1`) and
   the customer's token in `x-pragmatic-customer-token`. The console's status and body come back verbatim, except a 401
   `unauthorized` (the link bearer refused), which is a 503 for the customer. Answers are `no-store`. `EdgeHost` bounds
-  every request: headers 10 s, the whole request 30 s. `CustomerApiWire` holds the contract's wire values (paths,
+  every request: headers 10 s, the whole request 30 s, headers up to 20 KiB (so a 16 KiB bearer reaches the front's
+  own check). After an over-limit answer the rest of the body is read and dropped (up to 2 MiB or 1 s) so the caller
+  reads the answer, then the connection closes. `CustomerApiWire` holds the contract's wire values (paths,
   operations, label, limits, refusal codes and messages), because the contract package cannot be a runtime dependency
   (its app-host peers are the engine); `customer-api-parity.test.ts` pins them to the contract.
 - **`PlatformEdgeComponent`** (`src/platform-edge-component.ts`) - the component descriptor (name

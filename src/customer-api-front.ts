@@ -58,12 +58,13 @@ export class CustomerApiFront
     private static readonly DataEvent = 'data'
     private static readonly EndEvent = 'end'
     private static readonly ErrorEvent = 'error'
-    private static readonly AbortedEvent = 'aborted'
     private static readonly CloseEvent = 'close'
     private static readonly FinishEvent = 'finish'
-    private static readonly StatusUnauthorized = 401
     private static readonly CodeField = 'code'
-    private static readonly LinkUnauthorizedCode = 'unauthorized'
+    /** After an over-limit answer, at most this much more of the body is read and thrown away (or for this long), so
+     *  the caller, still writing, reads the answer before the connection closes. */
+    private static readonly DiscardLimit = 2 * 1048576
+    private static readonly DiscardMs = 1000
     private static readonly LogPrefix = '[customer-api]'
     private static readonly LinkRefusedMessage = 'the console refused the customer-API link bearer (secret files differ?)'
     private static readonly FallbackErrorName = 'Error'
@@ -182,8 +183,8 @@ export class CustomerApiFront
     private static IsLinkRefusal(reply: CustomerApiReply): boolean
     {
         const body = reply.Body
-        return reply.Status === CustomerApiFront.StatusUnauthorized && body !== null && typeof body === 'object'
-            && (body as Record<string, unknown>)[CustomerApiFront.CodeField] === CustomerApiFront.LinkUnauthorizedCode
+        return reply.Status === CustomerApiWire.LinkRefusedStatus && body !== null && typeof body === 'object'
+            && (body as Record<string, unknown>)[CustomerApiFront.CodeField] === CustomerApiWire.LinkRefusedCode
     }
 
     private async Admitted(req: IncomingMessage, res: ServerResponse, decision: RateDecision): Promise<boolean>
@@ -220,8 +221,31 @@ export class CustomerApiFront
             return
         }
         res.setHeader(CustomerApiFront.ConnectionHeader, CustomerApiFront.CloseValue)
-        res.on(CustomerApiFront.FinishEvent, () => req.destroy())
+        res.on(CustomerApiFront.FinishEvent, () => CustomerApiFront.DiscardThenDestroy(req))
         CustomerApiFront.Write(res, code)
+    }
+
+    /** Reads and drops up to DiscardLimit more bytes (or for DiscardMs), then closes the connection. */
+    private static DiscardThenDestroy(req: IncomingMessage): void
+    {
+        const F = CustomerApiFront
+        let discarded = 0
+        const end = (): void =>
+        {
+            clearTimeout(timer)
+            req.destroy()
+        }
+        const timer = setTimeout(end, F.DiscardMs)
+        req.on(F.DataEvent, (c: Buffer) =>
+        {
+            discarded += c.length
+            if (discarded > F.DiscardLimit)
+            {
+                end()
+            }
+        })
+        req.on(F.EndEvent, end)
+        req.resume()
     }
 
     private static ObjectOf(text: string): Record<string, unknown> | undefined
@@ -296,7 +320,13 @@ export class CustomerApiFront
             req.on(F.DataEvent, onData)
             req.on(F.EndEvent, () => finish(new BodyRead(BodyOutcome.Read, Buffer.concat(chunks).toString(F.Utf8))))
             req.on(F.ErrorEvent, () => finish(new BodyRead(BodyOutcome.Dropped, '')))
-            req.on(F.AbortedEvent, () => finish(new BodyRead(BodyOutcome.Dropped, '')))
+            req.on(F.CloseEvent, () =>
+            {
+                if (!req.complete)
+                {
+                    finish(new BodyRead(BodyOutcome.Dropped, ''))
+                }
+            })
         })
     }
 }

@@ -3,6 +3,10 @@ import { EdgeHost } from './edge-host.js'
 import { InternalApiClient, InternalApiLink } from '@pragmatic-tech-ai/pragmatic-platform-link'
 import { RemoteAgentChannelBackend } from './remote-agent-channel-backend.js'
 import { RemoteDesktopDiscoveryBackend } from './remote-desktop-discovery-backend.js'
+import { CustomerApiConsoleClient } from './customer-api-console-client.js'
+import { CustomerApiFront } from './customer-api-front.js'
+import { CustomerApiRateLimit } from './customer-api-rate-limit.js'
+import { CustomerApiWire } from './customer-api-wire.js'
 
 /** The composed keyless edge: its listener and where to bind it. */
 export interface ComposedEdge
@@ -11,10 +15,12 @@ export interface ComposedEdge
     Port: number
     Bind: string
     TrustedProxy: boolean
+    /** Whether the customer API is relayed (PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE is set). */
+    CustomerApi: boolean
 }
 
 /**
- * Composes the keyless platform edge (bin/pragmatic-platform-edged). Reads only its own five settings, never a data root, key, registry or
+ * Composes the keyless platform edge (bin/pragmatic-platform-edged). Reads only its own six settings, never a data root, key, registry or
  * the master key: everything it answers comes from admin's internal API.
  */
 export class EdgeComposition
@@ -22,6 +28,7 @@ export class EdgeComposition
     private static readonly PortEnvVar = 'PRAGMATIC_AGENT_CHANNEL_PORT'
     private static readonly BindEnvVar = 'PRAGMATIC_AGENT_CHANNEL_BIND'
     private static readonly AdminUrlEnvVar = 'PRAGMATIC_EDGE_ADMIN_URL'
+    private static readonly CustomerApiSecretEnvVar = 'PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE'
     private static readonly TrustedProxyEnvVar = 'PRAGMATIC_EDGE_TRUSTED_PROXY'
     private static readonly DefaultBind = '0.0.0.0'
     private static readonly MaxPort = 65535
@@ -53,8 +60,12 @@ export class EdgeComposition
         }
         const client = new InternalApiClient(adminUrl, InternalApiLink.Credential(secretFile))
         const trustedProxy = E.TrueValues.has(env[E.TrustedProxyEnvVar]?.trim().toLowerCase() ?? '')
-        const host = new EdgeHost(new RemoteAgentChannelBackend(client), new RemoteDesktopDiscoveryBackend(client), trustedProxy)
-        return { Host: host, Port: port, Bind: bind, TrustedProxy: trustedProxy }
+        const customerSecretFile = env[E.CustomerApiSecretEnvVar]?.trim() ?? ''
+        const customer = customerSecretFile === ''
+            ? undefined
+            : new CustomerApiFront(new CustomerApiConsoleClient(adminUrl, CustomerApiWire.Credential(customerSecretFile, E.CustomerApiSecretEnvVar)), new CustomerApiRateLimit())
+        const host = new EdgeHost(new RemoteAgentChannelBackend(client), new RemoteDesktopDiscoveryBackend(client), trustedProxy, customer)
+        return { Host: host, Port: port, Bind: bind, TrustedProxy: trustedProxy, CustomerApi: customer !== undefined }
     }
 
     private static AdminUrlOf(raw: string | undefined): string

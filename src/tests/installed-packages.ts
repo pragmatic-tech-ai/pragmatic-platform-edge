@@ -1,15 +1,16 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** The repository's manifest and every package installed under its node_modules (nested copies included). */
+/** A package's manifest fields the production walk reads. */
+type PackageManifest = { name?: string; dependencies?: Record<string, string>; peerDependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; peerDependenciesMeta?: Record<string, { optional?: boolean }> }
+
+/** The repository's manifest and the installed packages its production dependencies reach. */
 export class InstalledPackages
 {
     public static readonly RepoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
     private static readonly NodeModules = 'node_modules'
     private static readonly PackageJson = 'package.json'
-    private static readonly ScopePrefix = '@'
-    private static readonly HiddenPrefix = '.'
     private static readonly Utf8 = 'utf8'
 
     /** The dependency names the repository's package.json declares, in every dependency field. */
@@ -21,45 +22,79 @@ export class InstalledPackages
             .flatMap(field => Object.keys(field ?? {}))
     }
 
-    /** The install directory of every installed copy of the named package. */
-    public static CopiesOf(name: string): string[]
+    /** The names the repository's `dependencies` declare (what the image's `npm prune --omit=dev` keeps). */
+    public static DeclaredForProduction(): string[]
     {
-        const copies: string[] = []
-        InstalledPackages.Walk(join(InstalledPackages.RepoRoot, InstalledPackages.NodeModules), name, copies)
-        return copies
+        return Object.keys(InstalledPackages.ManifestOf(InstalledPackages.RepoRoot)?.dependencies ?? {})
     }
 
-    private static Walk(modules: string, name: string, copies: string[]): void
+    /**
+     * The names of every installed package the production tree reaches: from the repository's `dependencies`, each
+     * package's `dependencies`, `optionalDependencies` and non-optional `peerDependencies` (npm installs those), resolved
+     * the way Node does (the nearest node_modules up the tree). This is what the image carries.
+     */
+    public static Production(): Set<string>
+    {
+        return InstalledPackages.Reachable(InstalledPackages.DeclaredForProduction())
+    }
+
+    /** The names of every installed package reachable from the named top-level packages (the walk Production makes). */
+    public static Reachable(roots: readonly string[]): Set<string>
     {
         const I = InstalledPackages
-        if (!existsSync(modules))
+        const names = new Set<string>()
+        const visited = new Set<string>()
+        const queue: Array<[string, string]> = roots.map(name => [I.RepoRoot, name])
+        while (queue.length > 0)
         {
-            return
-        }
-        for (const entry of readdirSync(modules, { withFileTypes: true }))
-        {
-            if (entry.name.startsWith(I.HiddenPrefix) || !(entry.isDirectory() || entry.isSymbolicLink()))
+            const [from, name] = queue.shift() as [string, string]
+            const dir = I.Resolve(from, name)
+            if (dir === undefined || visited.has(dir))
             {
                 continue
             }
-            const dirs = entry.name.startsWith(I.ScopePrefix)
-                ? readdirSync(join(modules, entry.name)).map(child => join(modules, entry.name, child))
-                : [join(modules, entry.name)]
-            for (const dir of dirs)
+            visited.add(dir)
+            const manifest = I.ManifestOf(dir)
+            names.add(manifest?.name ?? name)
+            for (const next of I.RuntimeNeeds(manifest))
             {
-                I.Visit(dir, name, copies)
+                queue.push([dir, next])
             }
         }
+        return names
     }
 
-    private static Visit(dir: string, name: string, copies: string[]): void
+    private static RuntimeNeeds(manifest: PackageManifest | undefined): string[]
+    {
+        const peers = Object.keys(manifest?.peerDependencies ?? {}).filter(peer => manifest?.peerDependenciesMeta?.[peer]?.optional !== true)
+        return [...Object.keys(manifest?.dependencies ?? {}), ...Object.keys(manifest?.optionalDependencies ?? {}), ...peers]
+    }
+
+    /** Node's lookup: `<dir>/node_modules/<name>` from `from` up to the repository root. */
+    private static Resolve(from: string, name: string): string | undefined
     {
         const I = InstalledPackages
-        const manifest = join(dir, I.PackageJson)
-        if (existsSync(manifest) && (JSON.parse(readFileSync(manifest, I.Utf8)) as { name?: string }).name === name)
+        let dir = from
+        while (dir === I.RepoRoot || dir.startsWith(I.RepoRoot + sep))
         {
-            copies.push(dir)
+            const candidate = join(dir, I.NodeModules, name)
+            if (existsSync(join(candidate, I.PackageJson)))
+            {
+                return candidate
+            }
+            const parent = dirname(dir)
+            if (parent === dir)
+            {
+                break
+            }
+            dir = parent
         }
-        I.Walk(join(dir, I.NodeModules), name, copies)
+        return undefined
+    }
+
+    private static ManifestOf(dir: string): PackageManifest | undefined
+    {
+        const manifest = join(dir, InstalledPackages.PackageJson)
+        return existsSync(manifest) ? JSON.parse(readFileSync(manifest, InstalledPackages.Utf8)) as PackageManifest : undefined
     }
 }

@@ -81,6 +81,19 @@ describe('EdgeComposition', () =>
         assert.throws(() => EdgeComposition.Compose(CompositionFixture.Env({ PRAGMATIC_AGENT_CHANNEL_PORT: '0' })), /PRAGMATIC_AGENT_CHANNEL_PORT/)
     })
 
+    it('relays the customer API only with its secret file, and names the variable when the file is unusable', () =>
+    {
+        assert.equal(EdgeComposition.Compose(CompositionFixture.Env()).CustomerApi, false)
+        const secret = join(CompositionFixture.Root, 'customer-secret')
+        writeFileSync(secret, 'c'.repeat(48))
+        assert.equal(EdgeComposition.Compose(CompositionFixture.Env({ PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE: secret })).CustomerApi, true)
+        const short = join(CompositionFixture.Root, 'customer-short')
+        writeFileSync(short, 'c'.repeat(31))
+        assert.throws(() => EdgeComposition.Compose(CompositionFixture.Env({ PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE: short })), (err: unknown) =>
+            err instanceof Error && err.message.startsWith('PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE') && !err.message.includes('c'.repeat(31)))
+        assert.throws(() => EdgeComposition.Compose(CompositionFixture.Env({ PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE: join(CompositionFixture.Root, 'missing') })), /PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE/)
+    })
+
     it('reads the trusted-proxy switch', () =>
     {
         assert.equal(EdgeComposition.Compose(CompositionFixture.Env()).TrustedProxy, false)

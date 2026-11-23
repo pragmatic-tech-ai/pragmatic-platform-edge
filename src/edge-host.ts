@@ -1,11 +1,13 @@
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { AgentChannelHost, type IAgentChannelBackend, type IDesktopDiscoveryBackend, DesktopDiscoveryEndpoint, PlaneHttp } from '@pragmatic-tech-ai/pragmatic-platform-link'
+import { CustomerApiFront } from './customer-api-front.js'
 import { EdgeClientAddress } from './edge-client-address.js'
 
 /**
- * The edge's one public listener (behind Caddy): the agent channel, desktop discovery and a liveness probe, nothing
- * else. It holds no state of its own besides the discovery throttle; every answer comes from the backends.
+ * The edge's one public listener (behind Caddy): the agent channel, desktop discovery, a liveness probe and, when
+ * configured, the customer API's relay (CustomerApiFront), nothing else. It holds no state of its own besides the
+ * throttles; every answer comes from the backends or the platform admin console.
  */
 export class EdgeHost
 {
@@ -17,7 +19,7 @@ export class EdgeHost
     private readonly discovery: DesktopDiscoveryEndpoint
     private httpServer: HttpServer | undefined
 
-    public constructor(agent: IAgentChannelBackend, discovery: IDesktopDiscoveryBackend, private readonly trustedProxy: boolean)
+    public constructor(agent: IAgentChannelBackend, discovery: IDesktopDiscoveryBackend, private readonly trustedProxy: boolean, private readonly customer?: CustomerApiFront)
     {
         this.channel = new AgentChannelHost(agent)
         this.discovery = new DesktopDiscoveryEndpoint(discovery, DesktopDiscoveryEndpoint.NewThrottle())
@@ -79,6 +81,11 @@ export class EdgeHost
         if (AgentChannelHost.IsChannelPath(url))
         {
             await this.channel.Serve(req, res)
+            return
+        }
+        if (this.customer !== undefined && CustomerApiFront.Owns(url))
+        {
+            await this.customer.Handle(req, res, EdgeClientAddress.Of(req, this.trustedProxy))
             return
         }
         req.resume()

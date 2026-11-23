@@ -46,6 +46,19 @@
           "description": "PRAGMATIC_EDGE_TRUSTED_PROXY: Whether the edge sits behind a trusted proxy (x-forwarded-for is then the client)."
         }
       ]
+    },
+    {
+      "name": "customerApi",
+      "description": "The customer API relay: /api/customer/v1/<operation> on the public listener, relayed to the internal customer API of admin with the customer's own central-login token, which admin verifies. Without it the prefix answers 404.",
+      "settings": [
+        {
+          "name": "secretFile",
+          "type": "string",
+          "required": true,
+          "secret": true,
+          "description": "PRAGMATIC_EDGE_CUSTOMER_API_SECRET_FILE: The shared secret of the edge to admin customer API link (a mounted secret file, at least 32 bytes; the same secret as admin's PRAGMATIC_ADMIN_CUSTOMER_API_SECRET_FILE)."
+        }
+      ]
     }
   ],
   "roles": [],

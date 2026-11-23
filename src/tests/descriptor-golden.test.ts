@@ -9,16 +9,16 @@ import { PlatformEdgeComponent } from '../platform-edge-component.js'
 import { ComponentGolden } from './component-golden.js'
 
 /**
- * The descriptor the image carries is the one pragmatic-server's release signed: the digest pinned in its vendored set
- * (`admin/control-plane/descriptors/digests.json` at the seed commit) and the golden fixture copied with it.
+ * The descriptor the image carries: the golden fixture and its pinned digest (first pinned from pragmatic-server's
+ * vendored set at the seed commit; D4 added the `customerApi` option). A changed descriptor is a deliberate edit of both.
  */
 class DescriptorGoldenFixture
 {
     public static readonly Here = dirname(fileURLToPath(import.meta.url))
     public static readonly Golden = join(DescriptorGoldenFixture.Here, 'fixtures', 'pragmatic-platform-edge.component.json')
     public static readonly PackageJson = join(DescriptorGoldenFixture.Here, '..', '..', 'package.json')
-    /** pragmatic-server@2a2e8138 `admin/control-plane/descriptors/digests.json`, entry `pragmatic-platform-edge`. */
-    public static readonly ServerPinnedDigest = 'sha256:f8e6ed26594d13a07d6a35f48ad93bcdbede400637a431f9c16a8a3305a4ad8c'
+    /** The descriptor's content digest (D4: with the customer API relay option). */
+    public static readonly PinnedDigest = 'sha256:b626033f2fabff2cc510afb92fc9a24ef0af138edc7cc1ef51a40448eaa4750f'
     public static readonly Utf8 = 'utf8'
 
     public static PackageVersion(): string
@@ -30,11 +30,11 @@ class DescriptorGoldenFixture
 
 describe('descriptor golden', () =>
 {
-    it('the release module\'s descriptor has the digest pragmatic-server pinned', () =>
+    it('the release module\'s descriptor has the pinned digest', () =>
     {
         const F = DescriptorGoldenFixture
         const descriptor = Components.Of(ReleaseApp.PlatformEdge)
-        ComponentGolden.Check(descriptor, F.Golden, F.ServerPinnedDigest)
+        ComponentGolden.Check(descriptor, F.Golden, F.PinnedDigest)
     })
 
     it('the release module holds exactly this repository\'s component', () =>

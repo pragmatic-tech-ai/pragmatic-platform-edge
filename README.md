@@ -51,8 +51,8 @@ npx tsc --noEmit
 npx pragmatic-closure-check
 ```
 
-The Dockerfile, bake file, tsconfigs and workflows are rendered by `pragmatic-container-template` (pragmatic-release-toolkit);
-the one hand edit is the deps stage's `NPM_CONFIG_LEGACY_PEER_DEPS`. CI runs pragmatic-shared's reusable
+The Dockerfile, bake file, tsconfigs and workflows are rendered by `pragmatic-container-template` (pragmatic-release-toolkit),
+with no hand edit: `npx pragmatic-container-template render --app pragmatic-platform-edge --entry src/bin/pragmatic-platform-edged.ts --out .`. CI runs pragmatic-shared's reusable
 `container-ci.yml` (amd64 and arm64); a `v<semver>` tag equal to `package.json`'s version runs `container-release.yml`.
 
 ## License

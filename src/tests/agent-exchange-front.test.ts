@@ -3,7 +3,7 @@ import { request } from 'node:http'
 import { afterEach, describe, it } from 'node:test'
 import { AgentExchangeLink, AgentExchangeRefusal } from '@pragmatic-tech-ai/pragmatic-hive-protocol'
 import { InternalApiRelayReply, InternalApiRoutes, InternalApiUnavailableError, type AgentChannelReply, type DiscoveryReply, type IAgentChannelBackend, type IDesktopDiscoveryBackend } from '@pragmatic-tech-ai/pragmatic-platform-link'
-import { AgentExchangeFront, type IAgentExchangeRelay } from '../agent-exchange-front.js'
+import { AgentExchangeFront, AgentExchangeRateLimit, type IAgentExchangeRelay } from '../agent-exchange-front.js'
 import { EdgeHost } from '../edge-host.js'
 
 class ExchangeReply
@@ -49,10 +49,10 @@ class ExchangeFixture
     public static readonly Envelope = '{"Protocol":1,"Kind":"hive.report","odd":"\\u00e9 \\u2028 bytes"}'
     public static readonly Answer = '{"Protocol":1,"Kind":"platform.hive-enrolment-response"}'
 
-    public static async Start(console: FakeConsole, logs: string[] = []): Promise<EdgeHost>
+    public static async Start(console: FakeConsole, logs: string[] = [], limit: AgentExchangeRateLimit = new AgentExchangeRateLimit()): Promise<EdgeHost>
     {
         const backends = new UnusedBackends()
-        const host = new EdgeHost(backends, backends, false, undefined, {}, new AgentExchangeFront(console, line => logs.push(line)))
+        const host = new EdgeHost(backends, backends, false, undefined, {}, new AgentExchangeFront(console, limit, line => logs.push(line)))
         await host.Listen(0, '127.0.0.1')
         return host
     }
@@ -141,6 +141,42 @@ describe('AgentExchangeFront', () =>
         admin.Answer = () => Promise.resolve(new InternalApiRelayReply(401, Buffer.from('{"code":"unauthorized"}'), 'application/json'))
         assert.equal((await F.Send(host, 'POST', F.Envelope)).Status, 503)
         assert.ok(logs.every(line => !line.includes('hive.report')), 'the envelope is never logged')
+    })
+
+    it('a 401 naming not-verified is the platform refusal and passes through, never logged as the link', async () =>
+    {
+        const admin = new FakeConsole()
+        const logs: string[] = []
+        host = await F.Start(admin, logs)
+        const refusal = JSON.stringify(AgentExchangeLink.RefusalBody(AgentExchangeRefusal.NotVerified))
+        admin.Answer = () => Promise.resolve(new InternalApiRelayReply(401, Buffer.from(refusal), 'application/json'))
+        const reply = await F.Send(host, 'POST', F.Envelope)
+        assert.equal(reply.Status, 401)
+        assert.equal(AgentExchangeLink.CodeOf(JSON.parse(reply.Text)), AgentExchangeRefusal.NotVerified)
+        assert.deepEqual(logs, [])
+    })
+
+    it('each client address has a budget: past it, 503 with Retry-After and nothing relayed', async () =>
+    {
+        const admin = new FakeConsole()
+        host = await F.Start(admin, [], new AgentExchangeRateLimit({ PerAddressPerMinute: 2 }))
+        assert.equal((await F.Send(host, 'POST', F.Envelope)).Status, 204)
+        assert.equal((await F.Send(host, 'POST', F.Envelope)).Status, 204)
+        const limited = await F.Send(host, 'POST', F.Envelope)
+        assert.equal(limited.Status, 503)
+        assert.equal(AgentExchangeLink.CodeOf(JSON.parse(limited.Text)), AgentExchangeRefusal.Unavailable)
+        assert.equal(admin.Relayed.length, 2)
+    })
+
+    it('a thrown non-Error is logged by a fixed name only', async () =>
+    {
+        const admin = new FakeConsole()
+        const logs: string[] = []
+        host = await F.Start(admin, logs)
+        admin.Answer = () => Promise.reject('SECRET-TEXT from somewhere')
+        assert.equal((await F.Send(host, 'POST', F.Envelope)).Status, 503)
+        assert.equal(logs.length, 1)
+        assert.ok(!logs[0]!.includes('SECRET'))
     })
 
     it('owns only the exchange path', () =>

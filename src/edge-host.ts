@@ -106,7 +106,7 @@ export class EdgeHost
         }
         if (this.exchange !== undefined && AgentExchangeFront.Owns(url))
         {
-            await this.exchange.Handle(req, res)
+            await this.exchange.Handle(req, res, EdgeClientAddress.Of(req, this.trustedProxy))
             return
         }
         if (AgentChannelHost.IsChannelPath(url))

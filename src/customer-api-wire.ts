@@ -58,6 +58,7 @@ export class CustomerApiWire
         'start-domain-verification',
         'check-domain-verification',
         'leave-hive',
+        'request-environment',
     ]
     private static readonly PrefixRoot = '/api/customer/v1'
     private static readonly Table: ReadonlyMap<CustomerApiWireCode, readonly [number, string]> = new Map<CustomerApiWireCode, readonly [number, string]>([

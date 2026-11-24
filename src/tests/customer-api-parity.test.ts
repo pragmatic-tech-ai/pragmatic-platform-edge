@@ -3,7 +3,7 @@ import { after, before, describe, it } from 'node:test'
 import { AppHost, AppHostConfig, RouteTable } from '@pragmatic-tech-ai/pragmatic-app-host'
 import { CentralLoginSubject, CustomerCallAuthenticator } from '@pragmatic-tech-ai/pragmatic-entitlements-contract'
 import type { ICentralLoginVerifier } from '@pragmatic-tech-ai/pragmatic-entitlements-contract'
-import { CreateTenantRequest, CustomerApiClient, CustomerApiError, CustomerApiLink, CustomerApiRoutes, CustomerErrorCode, CustomerErrorCodes, DomainVerification, DomainVerificationRequest, DomainVerificationState, EnrolmentStart, HiveHealth, HiveLevel, HiveView, LeaveHiveRequest, ListHivesRequest, ListTenantsRequest, NotEntitledReason, StartEnrolmentRequest, TenantView } from '@pragmatic-tech-ai/pragmatic-customer-api-contract'
+import { CreateTenantRequest, CustomerApiClient, CustomerApiError, CustomerApiLink, CustomerApiRoutes, CustomerErrorCode, CustomerErrorCodes, DomainVerification, DomainVerificationRequest, DomainVerificationState, EnrolmentStart, HiveHealth, HiveLevel, HiveView, LeaveHiveRequest, ListHivesRequest, EnvironmentRequest, RequestEnvironmentRequest, RequestedEnvironmentPurpose, ListTenantsRequest, NotEntitledReason, StartEnrolmentRequest, TenantView } from '@pragmatic-tech-ai/pragmatic-customer-api-contract'
 import type { ICustomerApiService } from '@pragmatic-tech-ai/pragmatic-customer-api-contract'
 import type { AgentChannelReply, IAgentChannelBackend, DiscoveryReply, IDesktopDiscoveryBackend } from '@pragmatic-tech-ai/pragmatic-platform-link'
 import { CustomerApiConsoleClient } from '../customer-api-console-client.js'
@@ -117,6 +117,11 @@ class RecordingService implements ICustomerApiService
     {
         return new HiveView(request.HiveId, 'acme-prod', HiveLevel.Hosted, false, HiveHealth.Gone, null, [])
     }
+
+    public async RequestEnvironment(_customer: CentralLoginSubject, request: RequestEnvironmentRequest): Promise<EnvironmentRequest>
+    {
+        return new EnvironmentRequest('inabcdefghijkl', request.HiveId, HiveLevel.Enrolled, new Date('2026-12-01T00:00:00.000Z'))
+    }
 }
 
 class NoAgent implements IAgentChannelBackend
@@ -207,6 +212,7 @@ describe('customer API round trip through the edge', () =>
         assert.equal((await client.StartDomainVerification(Subjects.AnnToken, new DomainVerificationRequest('acme', 'acme-prod', 'acme.test'))).State, DomainVerificationState.Pending)
         assert.equal((await client.CheckDomainVerification(Subjects.AnnToken, new DomainVerificationRequest('acme', 'acme-prod', 'acme.test'))).State, DomainVerificationState.Verified)
         assert.equal((await client.LeaveHive(Subjects.AnnToken, new LeaveHiveRequest('acme', 'hive-1'))).Health, HiveHealth.Gone)
+        assert.equal((await client.RequestEnvironment(Subjects.AnnToken, new RequestEnvironmentRequest('acme', 'hive-1', 'prod', RequestedEnvironmentPurpose.Runtime))).IntentId, 'inabcdefghijkl')
         assert.ok(fixture.Service.Callers.every(key => key === Subjects.Ann.Key))
     })
 

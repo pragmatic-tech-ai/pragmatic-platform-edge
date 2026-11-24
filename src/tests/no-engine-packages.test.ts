@@ -6,14 +6,14 @@ import { InstalledPackages } from './installed-packages.js'
  * The edge's image carries no TODL engine, no todl-runtime and no Mural. None is a production dependency, and in the
  * lock every copy of them, of pragmatic-app-host and of the two customer-API contracts (whose peers are the engine) is
  * `dev`: only the devDependencies (the wire parity test) need them, so the image's `npm prune --omit=dev` removes them.
- * The runtime packages (pragmatic-platform-link, pragmatic-component) declare no peer.
+ * The runtime packages (pragmatic-platform-link, pragmatic-component, pragmatic-hive-protocol) declare no peer.
  */
 class EnginePackages
 {
     public static readonly Todl = '@pragmatic-tech-ai/todl'
     public static readonly Engine: readonly string[] = [EnginePackages.Todl, '@pragmatic-tech-ai/todl-runtime', '@pragmatic-tech-ai/mural']
     public static readonly DevOnly: readonly string[] = [...EnginePackages.Engine, '@pragmatic-tech-ai/pragmatic-app-host', '@pragmatic-tech-ai/pragmatic-customer-api-contract', '@pragmatic-tech-ai/pragmatic-entitlements-contract']
-    public static readonly Runtime: readonly string[] = ['@pragmatic-tech-ai/pragmatic-platform-link', '@pragmatic-tech-ai/pragmatic-component']
+    public static readonly Runtime: readonly string[] = ['@pragmatic-tech-ai/pragmatic-platform-link', '@pragmatic-tech-ai/pragmatic-component', '@pragmatic-tech-ai/pragmatic-hive-protocol']
 }
 
 describe('no engine packages in the image', () =>

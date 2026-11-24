@@ -4,6 +4,7 @@ import { InternalApiClient, InternalApiLink } from '@pragmatic-tech-ai/pragmatic
 import { RemoteAgentChannelBackend } from './remote-agent-channel-backend.js'
 import { RemoteDesktopDiscoveryBackend } from './remote-desktop-discovery-backend.js'
 import { CustomerApiConsoleClient } from './customer-api-console-client.js'
+import { AgentExchangeFront } from './agent-exchange-front.js'
 import { CustomerApiFront } from './customer-api-front.js'
 import { CustomerApiRateLimit } from './customer-api-rate-limit.js'
 import { CustomerApiWire } from './customer-api-wire.js'
@@ -64,7 +65,7 @@ export class EdgeComposition
         const customer = customerSecretFile === ''
             ? undefined
             : new CustomerApiFront(new CustomerApiConsoleClient(adminUrl, CustomerApiWire.Credential(customerSecretFile, E.CustomerApiSecretEnvVar)), new CustomerApiRateLimit())
-        const host = new EdgeHost(new RemoteAgentChannelBackend(client), new RemoteDesktopDiscoveryBackend(client), trustedProxy, customer)
+        const host = new EdgeHost(new RemoteAgentChannelBackend(client), new RemoteDesktopDiscoveryBackend(client), trustedProxy, customer, {}, new AgentExchangeFront(client))
         return { Host: host, Port: port, Bind: bind, TrustedProxy: trustedProxy, CustomerApi: customer !== undefined }
     }
 

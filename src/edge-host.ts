@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { AgentChannelHost, type IAgentChannelBackend, type IDesktopDiscoveryBackend, DesktopDiscoveryEndpoint, PlaneHttp } from '@pragmatic-tech-ai/pragmatic-platform-link'
+import { AgentExchangeFront } from './agent-exchange-front.js'
 import { CustomerApiFront } from './customer-api-front.js'
 import { EdgeClientAddress } from './edge-client-address.js'
 
@@ -16,8 +17,9 @@ export interface EdgeHostOptions
 }
 
 /**
- * The edge's one public listener (behind Caddy): the agent channel, desktop discovery, a liveness probe and, when
- * configured, the customer API's relay (CustomerApiFront), nothing else. It holds no state of its own besides the
+ * The edge's one public listener (behind Caddy): the agent channel (the v1 token routes and the signed exchange's
+ * verbatim relay, AgentExchangeFront), desktop discovery, a liveness probe and, when configured, the customer API's
+ * relay (CustomerApiFront), nothing else. It holds no state of its own besides the
  * throttles; every answer comes from the backends or the platform admin console.
  */
 export class EdgeHost
@@ -37,7 +39,7 @@ export class EdgeHost
     private readonly discovery: DesktopDiscoveryEndpoint
     private httpServer: HttpServer | undefined
 
-    public constructor(agent: IAgentChannelBackend, discovery: IDesktopDiscoveryBackend, private readonly trustedProxy: boolean, private readonly customer?: CustomerApiFront, private readonly options: EdgeHostOptions = {})
+    public constructor(agent: IAgentChannelBackend, discovery: IDesktopDiscoveryBackend, private readonly trustedProxy: boolean, private readonly customer?: CustomerApiFront, private readonly options: EdgeHostOptions = {}, private readonly exchange?: AgentExchangeFront)
     {
         this.channel = new AgentChannelHost(agent)
         this.discovery = new DesktopDiscoveryEndpoint(discovery, DesktopDiscoveryEndpoint.NewThrottle())
@@ -100,6 +102,11 @@ export class EdgeHost
         if (url === DesktopDiscoveryEndpoint.Path && req.method === PlaneHttp.MethodPost)
         {
             await this.discovery.Handle(req, res, EdgeClientAddress.Of(req, this.trustedProxy))
+            return
+        }
+        if (this.exchange !== undefined && AgentExchangeFront.Owns(url))
+        {
+            await this.exchange.Handle(req, res)
             return
         }
         if (AgentChannelHost.IsChannelPath(url))

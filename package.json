@@ -18,14 +18,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pragmatic-tech-ai/pragmatic-component": "^0.17.9",
-    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.17.9"
+    "@pragmatic-tech-ai/pragmatic-component": "^0.20.0",
+    "@pragmatic-tech-ai/pragmatic-hive-protocol": "^0.20.0",
+    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.20.0"
   },
   "devDependencies": {
-    "@pragmatic-tech-ai/pragmatic-app-host": "^0.17.9",
-    "@pragmatic-tech-ai/pragmatic-customer-api-contract": "^0.17.9",
-    "@pragmatic-tech-ai/pragmatic-entitlements-contract": "^0.17.9",
-    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.17.9",
+    "@pragmatic-tech-ai/pragmatic-app-host": "^0.20.0",
+    "@pragmatic-tech-ai/pragmatic-customer-api-contract": "^0.20.0",
+    "@pragmatic-tech-ai/pragmatic-entitlements-contract": "^0.20.0",
+    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.20.0",
     "@types/node": "^22.20.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.0"

@@ -16,6 +16,10 @@
 - **`RemoteAgentChannelBackend`**, **`RemoteDesktopDiscoveryBackend`** (`src/remote-*.ts`) - the edge side of the internal
   API: every request is posted verbatim to admin (`InternalApiRoutes.Agent` / `Discover`); admin unreachable, slow or
   answering anything but a well-formed 200 is a 503 `{ error: 'unavailable' }`, never admin's text.
+- **Signed agent exchange** - `AgentExchangeFront` (`src/agent-exchange-front.ts`, C3.3): `POST /agent/v2/exchange`, the
+  body (at most 1 MiB) relayed verbatim to admin's `InternalApiRoutes.AgentExchange` (`InternalApiClient.Relay`) and
+  admin's status and bytes answered as they are; never parsed or logged (the envelope is verified by admin). Another
+  method is 405, over 1 MiB 413 before relaying, admin down or refusing the link bearer 503 `unavailable`.
 - **Customer API** - `CustomerApiFront` (`src/customer-api-front.ts`): every request under `/api/customer/v1` first
   spends its client address's budget (so 404s and 401s spend it too); a `POST` naming a known operation then needs a
   bearer and spends its budget (`CustomerApiRateLimit`: pragmatic-platform-link's `AuditThrottle` per address, an IPv6

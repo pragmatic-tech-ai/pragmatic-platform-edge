@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { AgentExchangeLink, AgentExchangeRefusal } from '@pragmatic-tech-ai/pragmatic-hive-protocol'
 import { AuditThrottle, InternalApiRoutes, InternalApiUnavailableError, PlaneHttp, type InternalApiRelayReply } from '@pragmatic-tech-ai/pragmatic-platform-link'
-import { CustomerApiRateLimit, RateDecision } from './customer-api-rate-limit.js'
+import { CustomerApiRateLimit, type RateDecision } from './customer-api-rate-limit.js'
 
 /** What the front relays to: the platform admin console's internal listener (InternalApiClient). */
 export interface IAgentExchangeRelay
@@ -41,15 +41,7 @@ export class AgentExchangeRateLimit
 
     public HitAddress(address: string): RateDecision
     {
-        const key = CustomerApiRateLimit.AddressKey(address)
-        const before = this.addresses.CheckAllowed(key)
-        if (!before.allowed)
-        {
-            return new RateDecision(false, before.retryAfterMs)
-        }
-        this.addresses.RecordHit(key)
-        const after = this.addresses.CheckAllowed(key)
-        return new RateDecision(after.allowed, after.retryAfterMs)
+        return CustomerApiRateLimit.Hit(this.addresses, CustomerApiRateLimit.AddressKey(address))
     }
 }
 

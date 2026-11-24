@@ -1,6 +1,6 @@
 {
   "name": "@pragmatic-tech-ai/pragmatic-platform-edge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "The keyless public platform edge: the agent channel, desktop discovery and /healthz, answered by the platform admin console over its internal API.",
   "license": "Apache-2.0",
@@ -18,15 +18,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pragmatic-tech-ai/pragmatic-component": "^0.20.0",
-    "@pragmatic-tech-ai/pragmatic-hive-protocol": "^0.20.0",
-    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.20.0"
+    "@pragmatic-tech-ai/pragmatic-component": "^0.21.2",
+    "@pragmatic-tech-ai/pragmatic-hive-protocol": "^0.21.2",
+    "@pragmatic-tech-ai/pragmatic-platform-link": "^0.21.2"
   },
   "devDependencies": {
-    "@pragmatic-tech-ai/pragmatic-app-host": "^0.20.0",
-    "@pragmatic-tech-ai/pragmatic-customer-api-contract": "^0.20.0",
-    "@pragmatic-tech-ai/pragmatic-entitlements-contract": "^0.20.0",
-    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.20.0",
+    "@pragmatic-tech-ai/pragmatic-app-host": "^0.21.2",
+    "@pragmatic-tech-ai/pragmatic-customer-api-contract": "^0.21.2",
+    "@pragmatic-tech-ai/pragmatic-entitlements-contract": "^0.21.2",
+    "@pragmatic-tech-ai/pragmatic-release-toolkit": "^0.21.2",
     "@types/node": "^22.20.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.0"

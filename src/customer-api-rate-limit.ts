@@ -103,7 +103,8 @@ export class CustomerApiRateLimit
     }
 
     /** A call is counted, and refused when it is past the limit (the throttle locks on the hit that exceeds it). */
-    private static Hit(throttle: AuditThrottle, key: string): RateDecision
+    /** One hit on `throttle` for `key`: refused while locked, else counted (the hit that passes the limit is refused). */
+    public static Hit(throttle: AuditThrottle, key: string): RateDecision
     {
         const before = throttle.CheckAllowed(key)
         if (!before.allowed)

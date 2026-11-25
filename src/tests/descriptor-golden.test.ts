@@ -18,7 +18,7 @@ class DescriptorGoldenFixture
     public static readonly Golden = join(DescriptorGoldenFixture.Here, 'fixtures', 'pragmatic-platform-edge.component.json')
     public static readonly PackageJson = join(DescriptorGoldenFixture.Here, '..', '..', 'package.json')
     /** The descriptor's content digest (D4: with the customer API relay option). */
-    public static readonly PinnedDigest = 'sha256:bf3db1dd2f1ee93b860d1e70d88abb524cb60eeb6cb146ff76c30186ef1e8676'
+    public static readonly PinnedDigest = 'sha256:d964635f1b5bce15328936a6234639e470e8668ca41ad031c6012451fffeda47'
     public static readonly Utf8 = 'utf8'
 
     public static PackageVersion(): string

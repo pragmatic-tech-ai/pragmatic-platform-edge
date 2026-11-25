@@ -1,6 +1,6 @@
 {
   "name": "@pragmatic-tech-ai/pragmatic-platform-edge",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "The keyless public platform edge: the agent channel, desktop discovery and /healthz, answered by the platform admin console over its internal API.",
   "license": "Apache-2.0",

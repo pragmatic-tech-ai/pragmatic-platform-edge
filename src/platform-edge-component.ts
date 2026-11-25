@@ -8,7 +8,7 @@ export class PlatformEdgeComponent
 {
     public static readonly Name = 'pragmatic-platform-edge'
     /** The descriptor version: this application's package version (the release test pins it to package.json). */
-    public static readonly Version = '0.1.2'
+    public static readonly Version = '0.1.3'
 
     private static readonly Declaration: ComponentDeclaration = {
         name: PlatformEdgeComponent.Name,
